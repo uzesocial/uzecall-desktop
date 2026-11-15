@@ -24,11 +24,17 @@ jobs:
         with:
           node-version: 22
       - run: npm install --no-audit --no-fund
-      - run: npx electron-builder --win nsis --x64 --publish always
-        env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-      - uses: actions/upload-artifact@v4
+      - run: npx electron-builder --win nsis --x64 --publish never
+      - id: versao
+        shell: bash
+        run: echo "v=$(node -p "require('./package.json').version")" >> "$GITHUB_OUTPUT"
+      - uses: softprops/action-gh-release@v2
         with:
-          name: UzeCall-Setup
-          path: dist/UzeCall-Setup.exe
-          retention-days: 7
+          tag_name: v${{ steps.versao.outputs.v }}
+          name: UzeCall ${{ steps.versao.outputs.v }}
+          target_commitish: ${{ github.sha }}
+          make_latest: true
+          files: |
+            dist/UzeCall-Setup.exe
+            dist/UzeCall-Setup.exe.blockmap
+            dist/latest.yml
