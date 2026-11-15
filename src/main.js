@@ -15,6 +15,11 @@ let win = null;
 let tray = null;
 let quitting = false;
 
+// tamanho da tela (zoom): começa em 90% e a pessoa ajusta com Ctrl + / Ctrl - / Ctrl 0
+const ZOOM_DEFAULT = 0.9;
+const ZOOM_STEPS = [0.67, 0.75, 0.8, 0.9, 1, 1.1, 1.25, 1.5];
+let zoom = ZOOM_DEFAULT;
+
 // um UzeCall aberto por vez: abrir de novo só mostra a janela que já existe
 if (!app.requestSingleInstanceLock()) {
   app.quit();
@@ -48,7 +53,7 @@ function saveState() {
   if (!win || win.isDestroyed()) return;
   const maximized = win.isMaximized();
   const b = maximized ? win.getNormalBounds() : win.getBounds();
-  try { fs.writeFileSync(stateFile(), JSON.stringify({ ...b, maximized })); } catch { /* sem disco: tudo bem */ }
+  try { fs.writeFileSync(stateFile(), JSON.stringify({ ...b, maximized, zoom })); } catch { /* sem disco: tudo bem */ }
 }
 
 /* ------------------------------------------------------------------ janela principal */
@@ -60,8 +65,21 @@ function show() {
   win.focus();
 }
 
+function applyZoom(next) {
+  zoom = Math.min(ZOOM_STEPS[ZOOM_STEPS.length - 1], Math.max(ZOOM_STEPS[0], Math.round(next * 100) / 100));
+  if (win && !win.isDestroyed()) win.webContents.setZoomFactor(zoom);
+  saveState();
+}
+function stepZoom(dir) {
+  const next = dir > 0
+    ? ZOOM_STEPS.find((z) => z > zoom + 0.001) ?? ZOOM_STEPS[ZOOM_STEPS.length - 1]
+    : [...ZOOM_STEPS].reverse().find((z) => z < zoom - 0.001) ?? ZOOM_STEPS[0];
+  applyZoom(next);
+}
+
 function createWindow() {
   const s = loadState();
+  if (typeof s.zoom === "number" && s.zoom >= ZOOM_STEPS[0] && s.zoom <= ZOOM_STEPS[ZOOM_STEPS.length - 1]) zoom = s.zoom;
   win = new BrowserWindow({
     width: s.width || 1280,
     height: s.height || 800,
@@ -114,9 +132,16 @@ function createWindow() {
     if (!isMain || code === -3) return; // -3 = navegação cancelada
     win.loadFile(path.join(__dirname, "offline.html"), { query: { voltar: isOurs(url) ? url : START } });
   });
-  // F5 recarrega; Ctrl+Shift+I abre as ferramentas (para suporte)
+  // aplica o tamanho escolhido assim que a página carrega
+  wc.on("dom-ready", () => wc.setZoomFactor(zoom));
+  // Ctrl + rodinha do mouse também muda o tamanho
+  wc.on("zoom-changed", (_e, direction) => stepZoom(direction === "in" ? 1 : -1));
+  // F5 recarrega; Ctrl+Shift+I abre as ferramentas (para suporte); Ctrl +/-/0 muda o tamanho
   wc.on("before-input-event", (e, input) => {
     if (input.type !== "keyDown") return;
+    if (input.control && (input.key === "=" || input.key === "+")) { stepZoom(1); e.preventDefault(); return; }
+    if (input.control && input.key === "-") { stepZoom(-1); e.preventDefault(); return; }
+    if (input.control && input.key === "0") { applyZoom(ZOOM_DEFAULT); e.preventDefault(); return; }
     if (input.key === "F5" || (input.control && input.key.toLowerCase() === "r")) { wc.reload(); e.preventDefault(); }
     if (input.control && input.shift && input.key.toLowerCase() === "i") { wc.toggleDevTools(); e.preventDefault(); }
   });
