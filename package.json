@@ -1,0 +1,47 @@
+{
+  "name": "uzecall-desktop",
+  "productName": "UzeCall",
+  "version": "1.0.0",
+  "description": "UzeCall para Windows: voz para gamers",
+  "main": "src/main.js",
+  "author": "UzeCall",
+  "license": "UNLICENSED",
+  "private": true,
+  "scripts": {
+    "start": "electron .",
+    "dist": "electron-builder --win nsis --x64 --publish never",
+    "release": "electron-builder --win nsis --x64 --publish always"
+  },
+  "dependencies": {
+    "electron-updater": "6.8.11",
+    "uiohook-napi": "1.5.5"
+  },
+  "devDependencies": {
+    "electron": "45.3.2",
+    "electron-builder": "26.18.1"
+  },
+  "build": {
+    "appId": "com.uzecall.desktop",
+    "productName": "UzeCall",
+    "copyright": "UzeCall",
+    "directories": { "output": "dist" },
+    "files": ["src/**/*", "assets/**/*", "package.json"],
+    "win": {
+      "target": [{ "target": "nsis", "arch": ["x64"] }],
+      "icon": "assets/icon.png",
+      "artifactName": "UzeCall-Setup.${ext}"
+    },
+    "nsis": {
+      "oneClick": true,
+      "perMachine": false,
+      "createDesktopShortcut": true,
+      "createStartMenuShortcut": true,
+      "shortcutName": "UzeCall",
+      "runAfterFinish": true,
+      "deleteAppDataOnUninstall": false,
+      "installerLanguages": ["pt_BR"],
+      "language": "1046"
+    },
+    "publish": [{ "provider": "github", "owner": "uzesocial", "repo": "uzecall-desktop", "releaseType": "release" }]
+  }
+}

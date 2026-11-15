@@ -1,0 +1,30 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8">
+<meta http-equiv="Content-Security-Policy" content="default-src 'none'; style-src 'unsafe-inline'; script-src 'unsafe-inline'">
+<title>UzeCall</title>
+<style>
+  html, body { margin: 0; height: 100%; background: #05070D; color: #E8ECF5; font: 15px/1.5 "Segoe UI", system-ui, sans-serif; }
+  main { box-sizing: border-box; height: 100%; display: grid; place-items: center; text-align: center; padding: 24px; }
+  h1 { margin: 0 0 6px; font-size: 22px; }
+  p { margin: 0 0 20px; color: #A9B4C9; }
+  button { border: 0; border-radius: 10px; padding: 11px 20px; background: #165DFF; color: #fff; font: inherit; font-weight: 700; cursor: pointer; }
+</style>
+</head>
+<body>
+<main>
+  <div>
+    <h1>Sem conexão com o UzeCall</h1>
+    <p>Confira sua internet. Assim que voltar, é só tentar de novo.</p>
+    <button id="retry">Tentar de novo</button>
+  </div>
+</main>
+<script>
+  const back = new URLSearchParams(location.search).get("voltar") || "https://uzecall.vercel.app/app";
+  const go = () => { location.href = back.startsWith("https://uzecall.vercel.app") ? back : "https://uzecall.vercel.app/app"; };
+  document.getElementById("retry").onclick = go;
+  window.addEventListener("online", go);
+</script>
+</body>
+</html>

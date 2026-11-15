@@ -1,0 +1,86 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8">
+<meta http-equiv="Content-Security-Policy" content="default-src 'none'; img-src data:; style-src 'unsafe-inline'; script-src 'self' 'unsafe-inline'">
+<title>Compartilhar tela</title>
+<style>
+  * { box-sizing: border-box; }
+  html, body { margin: 0; height: 100%; background: #0E1525; color: #E8ECF5; font: 14px/1.4 "Segoe UI", system-ui, sans-serif; }
+  body { display: flex; flex-direction: column; }
+  header { padding: 18px 20px 8px; }
+  h1 { margin: 0; font-size: 18px; }
+  .tabs { display: flex; gap: 6px; padding: 8px 20px; }
+  .tab { border: 0; border-radius: 8px; padding: 7px 14px; background: #151E33; color: #A9B4C9; font: inherit; font-weight: 600; cursor: pointer; }
+  .tab[aria-selected="true"] { background: #165DFF; color: #fff; }
+  .grid { flex: 1; overflow-y: auto; display: grid; grid-template-columns: repeat(auto-fill, minmax(210px, 1fr)); gap: 12px; padding: 8px 20px 12px; align-content: start; }
+  .src { border: 2px solid transparent; border-radius: 12px; background: #151E33; padding: 8px; text-align: left; color: inherit; font: inherit; cursor: pointer; }
+  .src:hover { border-color: #2A3A5E; }
+  .src[aria-pressed="true"] { border-color: #3B82F6; }
+  .src:focus-visible { outline: 2px solid #8AB4FF; outline-offset: 2px; }
+  .thumb { width: 100%; aspect-ratio: 16/9; border-radius: 8px; background: #05070D center/contain no-repeat; display: block; }
+  .name { display: flex; align-items: center; gap: 6px; margin-top: 7px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; font-weight: 600; }
+  .name img { width: 16px; height: 16px; flex: none; }
+  .name span { overflow: hidden; text-overflow: ellipsis; }
+  footer { display: flex; align-items: center; gap: 12px; padding: 12px 20px 16px; border-top: 1px solid #1E2A44; }
+  label { display: flex; align-items: center; gap: 8px; cursor: pointer; }
+  label small { display: block; color: #7D8AA5; font-size: 12px; }
+  input[type=checkbox] { width: 18px; height: 18px; accent-color: #165DFF; }
+  .sp { flex: 1; }
+  .btn { border: 0; border-radius: 10px; padding: 10px 18px; font: inherit; font-weight: 700; cursor: pointer; }
+  .ghost { background: transparent; color: #A9B4C9; }
+  .go { background: #165DFF; color: #fff; }
+  .go:disabled { opacity: .45; cursor: not-allowed; }
+  .empty { color: #7D8AA5; padding: 20px 0; }
+</style>
+</head>
+<body>
+  <header><h1>O que você quer mostrar?</h1></header>
+  <div class="tabs" role="tablist">
+    <button class="tab" role="tab" data-kind="janela" aria-selected="true">Janelas e jogos</button>
+    <button class="tab" role="tab" data-kind="tela" aria-selected="false">Tela inteira</button>
+  </div>
+  <div class="grid" id="grid" aria-live="polite"></div>
+  <footer>
+    <label><input type="checkbox" id="audio"><span>Mandar o som do computador junto<small>Use fone: sem fone, o pessoal ouve a própria voz de volta.</small></span></label>
+    <span class="sp"></span>
+    <button class="btn ghost" id="cancel">Cancelar</button>
+    <button class="btn go" id="go" disabled>Compartilhar</button>
+  </footer>
+<script>
+  let all = [], kind = "janela", chosen = null;
+  const grid = document.getElementById("grid"), go = document.getElementById("go"), audio = document.getElementById("audio");
+  function render() {
+    grid.textContent = "";
+    const list = all.filter((s) => s.kind === kind);
+    if (!list.length) { const p = document.createElement("p"); p.className = "empty"; p.textContent = kind === "janela" ? "Nenhuma janela aberta para mostrar." : "Nenhuma tela encontrada."; grid.append(p); return; }
+    list.forEach((s, i) => {
+      const b = document.createElement("button");
+      b.className = "src"; b.type = "button"; b.setAttribute("aria-pressed", String(s.id === chosen));
+      const t = document.createElement("span"); t.className = "thumb"; if (s.thumb) t.style.backgroundImage = "url(" + s.thumb + ")";
+      const n = document.createElement("span"); n.className = "name";
+      if (s.icon) { const im = document.createElement("img"); im.src = s.icon; im.alt = ""; n.append(im); }
+      const tx = document.createElement("span"); tx.textContent = s.kind === "tela" ? (list.length > 1 ? "Tela " + (i + 1) : "Tela inteira") : s.name; n.append(tx);
+      b.append(t, n);
+      b.onclick = () => { chosen = s.id; go.disabled = false; render(); };
+      b.ondblclick = () => { chosen = s.id; window.picker.choose(chosen, audio.checked); };
+      grid.append(b);
+    });
+  }
+  document.querySelectorAll(".tab").forEach((t) => t.onclick = () => {
+    kind = t.dataset.kind;
+    document.querySelectorAll(".tab").forEach((x) => x.setAttribute("aria-selected", String(x === t)));
+    render();
+  });
+  document.getElementById("cancel").onclick = () => window.picker.choose(null);
+  go.onclick = () => chosen && window.picker.choose(chosen, audio.checked);
+  window.addEventListener("keydown", (e) => { if (e.key === "Escape") window.picker.choose(null); });
+  window.picker.sources().then((r) => {
+    all = r.sources;
+    audio.checked = false;
+    if (!all.some((s) => s.kind === "janela")) { kind = "tela"; document.querySelectorAll(".tab").forEach((x) => x.setAttribute("aria-selected", String(x.dataset.kind === "tela"))); }
+    render();
+  });
+</script>
+</body>
+</html>
