@@ -1,6 +1,6 @@
 // UzeCall para Windows: abre o UzeCall numa janela própria e acrescenta o que o navegador não faz
 // (apertar para falar com o jogo na frente, escolher tela para transmitir, bandeja, atualização sozinha).
-const { app, BrowserWindow, Tray, Menu, shell, session, desktopCapturer, ipcMain, nativeImage, Notification } = require("electron");
+const { app, BrowserWindow, Tray, Menu, shell, session, desktopCapturer, ipcMain, nativeImage, Notification, screen } = require("electron");
 const path = require("node:path");
 const fs = require("node:fs");
 
@@ -90,7 +90,7 @@ function createWindow() {
     show: false,
     title: "UzeCall",
     icon: ICON,
-    backgroundColor: "#05070D",
+    backgroundColor: "#06080C",
     autoHideMenuBar: true,
     webPreferences: {
       preload: path.join(__dirname, "preload.js"),
@@ -115,6 +115,11 @@ function createWindow() {
   });
   win.on("resized", saveState);
   win.on("moved", saveState);
+  // olhando para o UzeCall, o pop-out some (ele é para quando o jogo está na frente)
+  win.on("focus", applyOverlay);
+  win.on("blur", applyOverlay);
+  win.on("hide", applyOverlay);
+  win.on("show", applyOverlay);
 
   const wc = win.webContents;
   // links de fora (YouTube, Pix, e-mail) abrem no navegador
@@ -190,7 +195,7 @@ function pickSource(sources, wantAudio) {
       maximizable: false,
       title: "Compartilhar tela",
       icon: ICON,
-      backgroundColor: "#0E1525",
+      backgroundColor: "#111622",
       autoHideMenuBar: true,
       show: false,
       webPreferences: { preload: path.join(__dirname, "picker-preload.js"), contextIsolation: true, sandbox: true },
@@ -287,6 +292,102 @@ ipcMain.on("app:info", (e) => {
   e.returnValue = { version: app.getVersion(), platform: process.platform, globalPtt: !!loadHook() };
 });
 
+/* ------------------------------------------------------------------ pop-out por cima do jogo (quem está na call e quem fala) */
+
+const OVERLAY_CORNERS = ["top-left", "top-right", "bottom-left", "bottom-right"];
+const overlayFile = () => path.join(app.getPath("userData"), "popout.json");
+let overlayPrefs = { on: false, corner: "top-left" };
+try {
+  const saved = JSON.parse(fs.readFileSync(overlayFile(), "utf8"));
+  overlayPrefs = { on: saved.on === true, corner: OVERLAY_CORNERS.includes(saved.corner) ? saved.corner : "top-left" };
+} catch { /* primeira vez: desligado */ }
+let overlayWin = null;
+let overlayState = null;
+
+function saveOverlayPrefs(next) {
+  overlayPrefs = { on: next.on === true, corner: OVERLAY_CORNERS.includes(next.corner) ? next.corner : overlayPrefs.corner };
+  try { fs.writeFileSync(overlayFile(), JSON.stringify(overlayPrefs)); } catch { /* sem disco: vale até fechar */ }
+  if (tray) tray.setContextMenu(buildTrayMenu());
+  if (win && !win.isDestroyed()) win.webContents.send("overlay:prefs", overlayPrefs);
+  applyOverlay();
+}
+
+/** Só deixa passar o que o pop-out mostra (nome, foto, falando, mudo, surdo). */
+function cleanOverlayState(raw) {
+  if (!raw || typeof raw !== "object" || !Array.isArray(raw.people)) return null;
+  const str = (v, max) => (typeof v === "string" ? v.slice(0, max) : "");
+  const people = raw.people.slice(0, 10).map((p) => ({
+    name: str(p && p.name, 40) || "Alguém",
+    avatar: /^https:\/\//.test(str(p && p.avatar, 600)) ? str(p.avatar, 600) : null,
+    speaking: !!(p && p.speaking),
+    mudo: !!(p && p.mudo),
+    surdo: !!(p && p.surdo),
+  }));
+  const total = Number.isFinite(raw.total) ? Math.max(people.length, Math.min(999, Math.floor(raw.total))) : people.length;
+  return { channel: str(raw.channel, 60), people, more: total - people.length };
+}
+
+function overlayBounds(rows, extra) {
+  const area = screen.getPrimaryDisplay().workArea;
+  const width = 270;
+  const height = 6 * 2 + 22 + rows * 36 + (extra ? 22 : 0);
+  const m = 16;
+  const right = overlayPrefs.corner.endsWith("right");
+  const bottom = overlayPrefs.corner.startsWith("bottom");
+  return { width, height, x: right ? area.x + area.width - width - m : area.x + m, y: bottom ? area.y + area.height - height - m : area.y + m };
+}
+
+function applyOverlay() {
+  const lookingAtUzeCall = !!win && !win.isDestroyed() && win.isVisible() && win.isFocused();
+  const want = overlayPrefs.on && !!overlayState && overlayState.people.length > 0 && !lookingAtUzeCall;
+  if (!want) {
+    if (overlayWin && !overlayWin.isDestroyed() && overlayWin.isVisible()) overlayWin.hide();
+    return;
+  }
+  if (!overlayWin || overlayWin.isDestroyed()) {
+    overlayWin = new BrowserWindow({
+      ...overlayBounds(overlayState.people.length, overlayState.more > 0),
+      transparent: true,
+      frame: false,
+      resizable: false,
+      movable: false,
+      minimizable: false,
+      maximizable: false,
+      fullscreenable: false,
+      focusable: false,
+      skipTaskbar: true,
+      hasShadow: false,
+      show: false,
+      backgroundColor: "#00000000",
+      title: "UzeCall: pop-out",
+      webPreferences: { preload: path.join(__dirname, "overlay-preload.js"), contextIsolation: true, sandbox: true, backgroundThrottling: false },
+    });
+    overlayWin.setAlwaysOnTop(true, "screen-saver");
+    overlayWin.setIgnoreMouseEvents(true); // o clique passa direto para o jogo
+    overlayWin.setVisibleOnAllWorkspaces(true, { visibleOnFullScreen: true });
+    overlayWin.on("closed", () => { overlayWin = null; });
+    overlayWin.webContents.on("did-finish-load", () => applyOverlay());
+    overlayWin.loadFile(path.join(__dirname, "overlay.html"));
+    return;
+  }
+  if (overlayWin.webContents.isLoading()) return;
+  overlayWin.setBounds(overlayBounds(overlayState.people.length, overlayState.more > 0));
+  overlayWin.webContents.send("overlay:state", { ...overlayState, corner: overlayPrefs.corner });
+  if (!overlayWin.isVisible()) overlayWin.showInactive(); // aparece sem tirar o foco do jogo
+  overlayWin.setAlwaysOnTop(true, "screen-saver");
+}
+
+ipcMain.on("overlay:state", (e, raw) => {
+  if (!win || e.sender !== win.webContents) return;
+  overlayState = cleanOverlayState(raw);
+  applyOverlay();
+});
+ipcMain.on("overlay:prefs:get", (e) => { e.returnValue = overlayPrefs; });
+ipcMain.on("overlay:prefs:set", (e, next) => {
+  if (!win || e.sender !== win.webContents || !next || typeof next !== "object") return;
+  saveOverlayPrefs(next);
+});
+
 /* ------------------------------------------------------------------ ícone perto do relógio */
 
 function startsWithWindows() {
@@ -304,6 +405,12 @@ function buildTrayMenu() {
         app.setLoginItemSettings({ openAtLogin: item.checked, args: ["--hidden"] });
         tray.setContextMenu(buildTrayMenu());
       },
+    },
+    {
+      label: "Pop-out no jogo (quem está na call)",
+      type: "checkbox",
+      checked: overlayPrefs.on,
+      click: (item) => saveOverlayPrefs({ ...overlayPrefs, on: item.checked }),
     },
     { label: "Procurar atualização", click: () => checkUpdates(true) },
     { type: "separator" },

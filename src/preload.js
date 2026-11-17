@@ -14,4 +14,15 @@ contextBridge.exposeInMainWorld("uzDesktop", {
     ipcRenderer.on("ptt", handler);
     return () => ipcRenderer.removeListener("ptt", handler);
   },
+  // pop-out por cima do jogo: quem está na call e quem está falando
+  overlay: {
+    set: (state) => ipcRenderer.send("overlay:state", state && typeof state === "object" ? state : null),
+    prefs: () => ipcRenderer.sendSync("overlay:prefs:get"),
+    setPrefs: (prefs) => ipcRenderer.send("overlay:prefs:set", prefs),
+    onPrefs: (callback) => {
+      const handler = (_e, prefs) => callback(prefs);
+      ipcRenderer.on("overlay:prefs", handler);
+      return () => ipcRenderer.removeListener("overlay:prefs", handler);
+    },
+  },
 });

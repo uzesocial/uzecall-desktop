@@ -6,30 +6,30 @@
 <title>Compartilhar tela</title>
 <style>
   * { box-sizing: border-box; }
-  html, body { margin: 0; height: 100%; background: #0E1525; color: #E8ECF5; font: 14px/1.4 "Segoe UI", system-ui, sans-serif; }
+  html, body { margin: 0; height: 100%; background: #111622; color: #E8ECF5; font: 14px/1.4 "Segoe UI", system-ui, sans-serif; }
   body { display: flex; flex-direction: column; }
   header { padding: 18px 20px 8px; }
   h1 { margin: 0; font-size: 18px; }
   .tabs { display: flex; gap: 6px; padding: 8px 20px; }
   .tab { border: 0; border-radius: 8px; padding: 7px 14px; background: #151E33; color: #A9B4C9; font: inherit; font-weight: 600; cursor: pointer; }
-  .tab[aria-selected="true"] { background: #165DFF; color: #fff; }
+  .tab[aria-selected="true"] { background: #376ADE; color: #fff; }
   .grid { flex: 1; overflow-y: auto; display: grid; grid-template-columns: repeat(auto-fill, minmax(210px, 1fr)); gap: 12px; padding: 8px 20px 12px; align-content: start; }
   .src { border: 2px solid transparent; border-radius: 12px; background: #151E33; padding: 8px; text-align: left; color: inherit; font: inherit; cursor: pointer; }
   .src:hover { border-color: #2A3A5E; }
-  .src[aria-pressed="true"] { border-color: #3B82F6; }
+  .src[aria-pressed="true"] { border-color: #5288DF; }
   .src:focus-visible { outline: 2px solid #8AB4FF; outline-offset: 2px; }
-  .thumb { width: 100%; aspect-ratio: 16/9; border-radius: 8px; background: #05070D center/contain no-repeat; display: block; }
+  .thumb { width: 100%; aspect-ratio: 16/9; border-radius: 8px; background: #06080C center/contain no-repeat; display: block; }
   .name { display: flex; align-items: center; gap: 6px; margin-top: 7px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; font-weight: 600; }
   .name img { width: 16px; height: 16px; flex: none; }
   .name span { overflow: hidden; text-overflow: ellipsis; }
   footer { display: flex; align-items: center; gap: 12px; padding: 12px 20px 16px; border-top: 1px solid #1E2A44; }
   label { display: flex; align-items: center; gap: 8px; cursor: pointer; }
   label small { display: block; color: #7D8AA5; font-size: 12px; }
-  input[type=checkbox] { width: 18px; height: 18px; accent-color: #165DFF; }
+  input[type=checkbox] { width: 18px; height: 18px; accent-color: #376ADE; }
   .sp { flex: 1; }
   .btn { border: 0; border-radius: 10px; padding: 10px 18px; font: inherit; font-weight: 700; cursor: pointer; }
   .ghost { background: transparent; color: #A9B4C9; }
-  .go { background: #165DFF; color: #fff; }
+  .go { background: #376ADE; color: #fff; }
   .go:disabled { opacity: .45; cursor: not-allowed; }
   .empty { color: #7D8AA5; padding: 20px 0; }
 </style>
