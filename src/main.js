@@ -246,14 +246,20 @@ function hookKeyFor(code, keys) {
 }
 
 const ptt = { hook: null, keys: null, key: null, down: false, running: false };
+const clip = { key: null, down: false }; // tecla de salvar o clipe (também funciona com o jogo na frente)
 function sendPtt(down) {
   if (win && !win.isDestroyed()) win.webContents.send("ptt", down);
 }
 function onKeyDown(e) {
   if (ptt.key !== null && e.keycode === ptt.key && !ptt.down) { ptt.down = true; sendPtt(true); }
+  if (clip.key !== null && e.keycode === clip.key && !clip.down) {
+    clip.down = true;
+    if (win && !win.isDestroyed()) win.webContents.send("clip:key");
+  }
 }
 function onKeyUp(e) {
   if (ptt.key !== null && e.keycode === ptt.key && ptt.down) { ptt.down = false; sendPtt(false); }
+  if (clip.key !== null && e.keycode === clip.key) clip.down = false;
 }
 // só para teste fora do instalador: "down 47" / "up 47" na entrada simula a tecla
 if (!app.isPackaged && process.env.UZ_DEBUG) {
@@ -276,6 +282,14 @@ function loadHook() {
   }
   return ptt.hook;
 }
+// o gancho do teclado só fica ligado se alguma tecla (falar ou clipe) estiver em uso
+function syncHook(hook) {
+  const need = ptt.key !== null || clip.key !== null;
+  try {
+    if (need && !ptt.running) { hook.start(); ptt.running = true; }
+    if (!need && ptt.running) { hook.stop(); ptt.running = false; }
+  } catch { /* segue sem o atalho global */ }
+}
 ipcMain.on("ptt:set", (e, code) => {
   if (!win || e.sender !== win.webContents) return;
   const hook = loadHook();
@@ -283,11 +297,147 @@ ipcMain.on("ptt:set", (e, code) => {
   const key = typeof code === "string" ? hookKeyFor(code, ptt.keys) : null;
   if (ptt.down && key !== ptt.key) { ptt.down = false; sendPtt(false); }
   ptt.key = key;
-  try {
-    if (key !== null && !ptt.running) { hook.start(); ptt.running = true; }
-    if (key === null && ptt.running) { hook.stop(); ptt.running = false; }
-  } catch { /* segue sem o atalho global */ }
+  syncHook(hook);
 });
+ipcMain.on("clip:set", (e, code) => {
+  if (!win || e.sender !== win.webContents) return;
+  const hook = loadHook();
+  if (!hook) return;
+  clip.key = typeof code === "string" ? hookKeyFor(code, ptt.keys) : null;
+  clip.down = false;
+  syncHook(hook);
+});
+
+/* ------------------------------------------------------------------ clipes: salva em Vídeos > UzeCall Clipes */
+
+const clipsDir = () => path.join(app.getPath("videos"), "UzeCall Clipes");
+function clipName(ext) {
+  const d = new Date();
+  const p = (n) => String(n).padStart(2, "0");
+  return `UzeCall-${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())}_${p(d.getHours())}-${p(d.getMinutes())}-${p(d.getSeconds())}.${ext}`;
+}
+ipcMain.handle("clip:save", async (e, data, ext) => {
+  if (!win || e.sender !== win.webContents) return null;
+  if (ext !== "mp4" && ext !== "webm") return null;
+  const bytes = data instanceof ArrayBuffer ? Buffer.from(data) : ArrayBuffer.isView(data) ? Buffer.from(data.buffer, data.byteOffset, data.byteLength) : null;
+  if (!bytes || bytes.length < 1000 || bytes.length > 600 * 1024 * 1024) return null;
+  try {
+    const dir = clipsDir();
+    await fs.promises.mkdir(dir, { recursive: true });
+    const file = path.join(dir, clipName(ext));
+    await fs.promises.writeFile(file, bytes);
+    if (Notification.isSupported()) {
+      const n = new Notification({ title: "Clipe salvo", body: "Clique para abrir a pasta.", icon: ICON, silent: true });
+      n.on("click", () => shell.showItemInFolder(file));
+      n.show();
+    }
+    return file;
+  } catch {
+    return null;
+  }
+});
+ipcMain.on("clip:show", (e, file) => {
+  if (!win || e.sender !== win.webContents || typeof file !== "string") return;
+  const dir = clipsDir();
+  const full = path.resolve(file);
+  if (full.startsWith(dir + path.sep) && fs.existsSync(full)) shell.showItemInFolder(full);
+});
+
+// aviso do Windows clicado no site: traz a janela para a frente
+ipcMain.on("win:focus", (e) => {
+  if (win && e.sender === win.webContents) show();
+});
+
+/* ------------------------------------------------------------------ jogo aberto (para mostrar "Jogando …") */
+
+// nome do programa (minúsculo) -> nome do jogo que aparece para os amigos
+const GAMES = {
+  "cs2.exe": "Counter-Strike 2",
+  "valorant-win64-shipping.exe": "Valorant",
+  "league of legends.exe": "League of Legends",
+  "fortniteclient-win64-shipping.exe": "Fortnite",
+  "gta5.exe": "GTA V",
+  "gta5_enhanced.exe": "GTA V",
+  "playgta5.exe": "GTA V",
+  "robloxplayerbeta.exe": "Roblox",
+  "dota2.exe": "Dota 2",
+  "r5apex.exe": "Apex Legends",
+  "r5apex_dx12.exe": "Apex Legends",
+  "rocketleague.exe": "Rocket League",
+  "rainbowsix.exe": "Rainbow Six Siege",
+  "rainbowsix_be.exe": "Rainbow Six Siege",
+  "tslgame.exe": "PUBG",
+  "cod.exe": "Call of Duty",
+  "overwatch.exe": "Overwatch 2",
+  "fc25.exe": "EA SPORTS FC 25",
+  "fc26.exe": "EA SPORTS FC 26",
+  "marvel-win64-shipping.exe": "Marvel Rivals",
+  "rustclient.exe": "Rust",
+  "deadbydaylight-win64-shipping.exe": "Dead by Daylight",
+  "eurotrucks2.exe": "Euro Truck Simulator 2",
+  "pathofexile.exe": "Path of Exile",
+  "pathofexile_x64steam.exe": "Path of Exile",
+  "pathofexile2.exe": "Path of Exile 2",
+  "wow.exe": "World of Warcraft",
+  "genshinimpact.exe": "Genshin Impact",
+  "eldenring.exe": "Elden Ring",
+  "escapefromtarkov.exe": "Escape from Tarkov",
+  "albion-online.exe": "Albion Online",
+  "minecraft.windows.exe": "Minecraft",
+  "rdr2.exe": "Red Dead Redemption 2",
+  "cyberpunk2077.exe": "Cyberpunk 2077",
+  "helldivers2.exe": "Helldivers 2",
+  "deadlock.exe": "Deadlock",
+  "bf2042.exe": "Battlefield 2042",
+  "bf6.exe": "Battlefield 6",
+  "hll-win64-shipping.exe": "Hell Let Loose",
+  "brawlhalla.exe": "Brawlhalla",
+  "rocketleague_be.exe": "Rocket League",
+  "warframe.x64.exe": "Warframe",
+  "destiny2.exe": "Destiny 2",
+  "thefinals.exe": "The Finals",
+  "fallguys_client_game.exe": "Fall Guys",
+  "pal-win64-shipping.exe": "Palworld",
+  "sotgame.exe": "Sea of Thieves",
+  "forzahorizon5.exe": "Forza Horizon 5",
+  "nba2k25.exe": "NBA 2K25",
+  "nba2k26.exe": "NBA 2K26",
+  "tibia.exe": "Tibia",
+};
+let currentGame = null;
+let gameTimer = null;
+function listProcesses() {
+  return new Promise((resolve) => {
+    const { execFile } = require("node:child_process");
+    if (process.platform === "win32") {
+      execFile("tasklist", ["/fo", "csv", "/nh"], { windowsHide: true, timeout: 8000, maxBuffer: 8 * 1024 * 1024 }, (err, out) => {
+        if (err) return resolve([]);
+        resolve(String(out).split(/\r?\n/).map((line) => (line.match(/^"([^"]+)"/) || [])[1]).filter(Boolean).map((x) => x.toLowerCase()));
+      });
+    } else {
+      // fora do Windows (só para teste): nomes dos processos
+      execFile("ps", ["-eo", "comm="], { timeout: 8000 }, (err, out) => resolve(err ? [] : String(out).split("\n").map((x) => x.trim().toLowerCase()).filter(Boolean)));
+    }
+  });
+}
+async function checkGame() {
+  const names = await listProcesses();
+  let found = null;
+  for (const n of names) {
+    if (GAMES[n]) { found = GAMES[n]; break; }
+  }
+  if (process.env.UZ_FAKE_GAME) found = process.env.UZ_FAKE_GAME;
+  if (found !== currentGame) {
+    currentGame = found;
+    if (win && !win.isDestroyed()) win.webContents.send("game", currentGame);
+  }
+}
+function startGameWatch() {
+  if (gameTimer) return;
+  checkGame();
+  gameTimer = setInterval(checkGame, 20_000);
+}
+ipcMain.on("game:get", (e) => { e.returnValue = currentGame; });
 ipcMain.on("app:info", (e) => {
   e.returnValue = { version: app.getVersion(), platform: process.platform, globalPtt: !!loadHook() };
 });
@@ -457,6 +607,7 @@ app.whenReady().then(() => {
   setupPermissions();
   createWindow();
   createTray();
+  startGameWatch();
   checkUpdates(false);
   setInterval(() => checkUpdates(false), 6 * 60 * 60 * 1000);
 });
